@@ -2,13 +2,17 @@ import pyaudio
 import os
 import wave
 import librosa
+import pydub
+import numpy
 import numpy as np
+        
+from csv import writer
 from sys import byteorder
 from array import array
 from struct import pack
 
 
-THRESHOLD = 500
+THRESHOLD = 3000
 CHUNK_SIZE = 1024
 FORMAT = pyaudio.paInt16
 RATE = 16000
@@ -189,3 +193,37 @@ if __name__ == "__main__":
     # show the result!
     print("Result:", gender)
     print(f"Probabilities:     Male: {male_prob*100:.2f}%    Female: {female_prob*100:.2f}%")
+
+saveData = input("Wanna save this data? (y/n) : ")
+
+if saveData == 'y':
+    name = input('enter data name : ')
+
+    def writeNpy(f):
+        a = pydub.AudioSegment.from_mp3(f)
+        arr = np.array(a.get_array_of_samples())
+        numpy.save('data/cv-valid-train/'+name+'.npy', arr, allow_pickle=True, fix_imports=True)
+
+    audio_file = 'test.wav'
+    writeNpy(audio_file)
+
+    # List that we want to add as a new row
+    List = [('data/cv-valid-selftrain/'+name+'.npy'), gender]
+    
+    # Open our existing CSV file in append mode
+    # Create a file object for this file
+    with open('balanced-all.csv', 'a') as f_object:
+    
+        # Pass this file object to csv.writer()
+        # and get a writer object
+        writer_object = writer(f_object)
+    
+        # Pass the list as an argument into
+        # the writerow()
+        writer_object.writerow(List)
+    
+        # Close the file object
+        f_object.close()
+
+else:
+    print('Data not be saved!')

@@ -20,7 +20,7 @@ epochs = 100
 
 # train the model using the training set and validating using validation set
 model.fit(data["X_train"], data["y_train"], epochs=epochs, batch_size=batch_size, validation_data=(data["X_valid"], data["y_valid"]),
-          callbacks=[tensorboard, early_stopping])
+        callbacks=[tensorboard, early_stopping])
 
 # save the model to a file
 model.save("results/model.h5")
