@@ -1,6 +1,3 @@
-import os
-import random
-import time
 import wave
 from array import array
 from csv import writer
