@@ -12,7 +12,7 @@ from array import array
 from struct import pack
 
 
-THRESHOLD = 3000
+THRESHOLD = 500
 CHUNK_SIZE = 1024
 FORMAT = pyaudio.paInt16
 RATE = 16000
@@ -208,7 +208,7 @@ if saveData == 'y':
     writeNpy(audio_file)
 
     # List that we want to add as a new row
-    List = [('data/cv-valid-selftrain/'+name+'.npy'), gender]
+    List = [('data/cv-valid-train/'+name+'.npy'), gender]
     
     # Open our existing CSV file in append mode
     # Create a file object for this file
