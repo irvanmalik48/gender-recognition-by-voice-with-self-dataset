@@ -352,6 +352,11 @@ class Ui_Form(object):
         self.startRecordBtn.clicked.connect(self.start_button_clicked)
         self.runBtn.clicked.connect(self.run_clicked)
         self.saveBtn.clicked.connect(self.save_clicked)
+        
+        # todo: add retrain button event
+        # self.retrainBtn.clicked.connect(self.retrain_clicked)
+
+
 
     # startRecordBtn event handling
     def start_button_preclick(self):
@@ -438,6 +443,25 @@ class Ui_Form(object):
         builder.signals.finished.connect(self.save_postclick)
 
         self.threadpool.start(builder)
+    
+    # todo: add retrain button event handling
+    # def retrain_preclick(self):
+    #     self.add_to_log("[EVENT] Retrain start.")
+
+    # def retrain_event(self):
+    #     # add retrain code here
+
+    # def retrain_postclick(self):
+    #     self.add_to_log("[SUCCESS] Retrain complete.")
+
+    # def retrain_clicked(self):
+    #     builder = Builder()
+
+    #     builder.signals.started.connect(self.retrain_preclick)
+    #     builder.signals.result.connect(self.retrain_event)
+    #     builder.signals.finished.connect(self.retrain_postclick)
+
+    #     self.threadpool.start(builder)
 
 
 if __name__ == "__main__":
