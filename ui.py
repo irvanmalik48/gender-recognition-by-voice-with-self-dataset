@@ -19,15 +19,8 @@ class Builder(QRunnable):
 
     def run(self):
         self.signals.started.emit()
-
-        try:
-            self.signals.result.emit()
-        except:
-            traceback.print_exc()
-        else:
-            self.signals.finished.emit()
-        finally:
-            pass
+        self.signals.result.emit()
+        self.signals.finished.emit()
 
 
 class Ui_Form(object):
