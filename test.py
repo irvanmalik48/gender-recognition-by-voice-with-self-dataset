@@ -5,12 +5,15 @@ import librosa
 import pydub
 import numpy
 import numpy as np
-        
+
 from csv import writer
 from sys import byteorder
 from array import array
 from struct import pack
 
+from PySide2.QtCore import *
+from PySide2.QtGui import *
+from PySide2.QtWidgets import *
 
 THRESHOLD = 3000
 CHUNK_SIZE = 1024
@@ -19,28 +22,32 @@ RATE = 16000
 
 SILENCE = 30
 
+
 def is_silent(snd_data):
     "Returns 'True' if below the 'silent' threshold"
     return max(snd_data) < THRESHOLD
 
+
 def normalize(snd_data):
     "Average the volume out"
     MAXIMUM = 16384
-    times = float(MAXIMUM)/max(abs(i) for i in snd_data)
+    times = float(MAXIMUM) / max(abs(i) for i in snd_data)
 
-    r = array('h')
+    r = array("h")
     for i in snd_data:
-        r.append(int(i*times))
+        r.append(int(i * times))
     return r
+
 
 def trim(snd_data):
     "Trim the blank spots at the start and end"
+
     def _trim(snd_data):
         snd_started = False
-        r = array('h')
+        r = array("h")
 
         for i in snd_data:
-            if not snd_started and abs(i)>THRESHOLD:
+            if not snd_started and abs(i) > THRESHOLD:
                 snd_started = True
                 r.append(i)
 
@@ -57,36 +64,43 @@ def trim(snd_data):
     snd_data.reverse()
     return snd_data
 
+
 def add_silence(snd_data, seconds):
     "Add silence to the start and end of 'snd_data' of length 'seconds' (float)"
-    r = array('h', [0 for i in range(int(seconds*RATE))])
+    r = array("h", [0 for i in range(int(seconds * RATE))])
     r.extend(snd_data)
-    r.extend([0 for i in range(int(seconds*RATE))])
+    r.extend([0 for i in range(int(seconds * RATE))])
     return r
+
 
 def record():
     """
-    Record a word or words from the microphone and 
+    Record a word or words from the microphone and
     return the data as an array of signed shorts.
-    Normalizes the audio, trims silence from the 
-    start and end, and pads with 0.5 seconds of 
-    blank sound to make sure VLC et al can play 
+    Normalizes the audio, trims silence from the
+    start and end, and pads with 0.5 seconds of
+    blank sound to make sure VLC et al can play
     it without getting chopped off.
     """
     p = pyaudio.PyAudio()
-    stream = p.open(format=FORMAT, channels=1, rate=RATE,
-        input=True, output=True,
-        frames_per_buffer=CHUNK_SIZE)
+    stream = p.open(
+        format=FORMAT,
+        channels=1,
+        rate=RATE,
+        input=True,
+        output=True,
+        frames_per_buffer=CHUNK_SIZE,
+    )
 
     num_silent = 0
     snd_started = False
 
-    r = array('h')
+    r = array("h")
 
     while 1:
         # little endian, signed short
-        snd_data = array('h', stream.read(CHUNK_SIZE))
-        if byteorder == 'big':
+        snd_data = array("h", stream.read(CHUNK_SIZE))
+        if byteorder == "big":
             snd_data.byteswap()
         r.extend(snd_data)
 
@@ -110,18 +124,18 @@ def record():
     r = add_silence(r, 0.5)
     return sample_width, r
 
+
 def record_to_file(path):
     "Records from the microphone and outputs the resulting data to 'path'"
     sample_width, data = record()
-    data = pack('<' + ('h'*len(data)), *data)
+    data = pack("<" + ("h" * len(data)), *data)
 
-    wf = wave.open(path, 'wb')
+    wf = wave.open(path, "wb")
     wf.setnchannels(1)
     wf.setsampwidth(sample_width)
     wf.setframerate(RATE)
     wf.writeframes(data)
     wf.close()
-
 
 
 def extract_feature(file_name, **kwargs):
@@ -149,81 +163,53 @@ def extract_feature(file_name, **kwargs):
         mfccs = np.mean(librosa.feature.mfcc(y=X, sr=sample_rate, n_mfcc=40).T, axis=0)
         result = np.hstack((result, mfccs))
     if chroma:
-        chroma = np.mean(librosa.feature.chroma_stft(S=stft, sr=sample_rate).T,axis=0)
+        chroma = np.mean(librosa.feature.chroma_stft(S=stft, sr=sample_rate).T, axis=0)
         result = np.hstack((result, chroma))
     if mel:
-        mel = np.mean(librosa.feature.melspectrogram(X, sr=sample_rate).T,axis=0)
+        mel = np.mean(librosa.feature.melspectrogram(X, sr=sample_rate).T, axis=0)
         result = np.hstack((result, mel))
     if contrast:
-        contrast = np.mean(librosa.feature.spectral_contrast(S=stft, sr=sample_rate).T,axis=0)
+        contrast = np.mean(
+            librosa.feature.spectral_contrast(S=stft, sr=sample_rate).T, axis=0
+        )
         result = np.hstack((result, contrast))
     if tonnetz:
-        tonnetz = np.mean(librosa.feature.tonnetz(y=librosa.effects.harmonic(X), sr=sample_rate).T,axis=0)
+        tonnetz = np.mean(
+            librosa.feature.tonnetz(y=librosa.effects.harmonic(X), sr=sample_rate).T,
+            axis=0,
+        )
         result = np.hstack((result, tonnetz))
     return result
 
 
-if __name__ == "__main__":
-    # load the saved model (after training)
-    # model = pickle.load(open("result/mlp_classifier.model", "rb"))
-    from utils import load_data, split_data, create_model
-    import argparse
-    parser = argparse.ArgumentParser(description="""Gender recognition script, this will load the model you trained, 
-                                    and perform inference on a sample you provide (either using your voice or a file)""")
-    parser.add_argument("-f", "--file", help="The path to the file, preferred to be in WAV format")
-    args = parser.parse_args()
-    file = args.file
-    # construct the model
+def run_analyze(snd_path):
+    from utils import create_model, load_data, split_data
+
     model = create_model()
-    # load the saved/trained weights
     model.load_weights("results/model.h5")
-    if not file or not os.path.isfile(file):
-        # if file not provided, or it doesn't exist, use your voice
-        print("Please talk")
-        # put the file name here
-        file = "test.wav"
-        # record the file (start talking)
-        record_to_file(file)
-    # extract features and reshape it
-    features = extract_feature(file, mel=True).reshape(1, -1)
-    # predict the gender!
-    male_prob = model.predict(features)[0][0]
-    female_prob = 1 - male_prob
-    gender = "male" if male_prob > female_prob else "female"
-    # show the result!
-    print("Result:", gender)
-    print(f"Probabilities:     Male: {male_prob*100:.2f}%    Female: {female_prob*100:.2f}%")
+    features = extract_feature(snd_path, mel=True).reshape(1, -1)
+    male_pred = model.predict(features)[0][0]
+    female_pred = 1 - male_pred
+    gender = "male" if male_pred > female_pred else "female"
+    return male_pred, female_pred, gender
 
-saveData = input("Wanna save this data? (y/n) : ")
 
-if saveData == 'y':
-    name = input('enter data name : ')
+def save_sound(snd_path, file_name, gender):
+    a = pydub.AudioSegment.from_mp3(snd_path)
+    arr = np.array(a.get_array_of_samples())
+    numpy.save(
+        "data/cv-valid-train/" + file_name + ".npy",
+        arr,
+        allow_pickle=True,
+        fix_imports=True,
+    )
 
-    def writeNpy(f):
-        a = pydub.AudioSegment.from_mp3(f)
-        arr = np.array(a.get_array_of_samples())
-        numpy.save('data/cv-valid-train/'+name+'.npy', arr, allow_pickle=True, fix_imports=True)
+    List = [
+        ("data/cv-valid-selftrain/" + file_name + ".npy"),
+        gender,
+    ]
 
-    audio_file = 'test.wav'
-    writeNpy(audio_file)
-
-    # List that we want to add as a new row
-    List = [('data/cv-valid-selftrain/'+name+'.npy'), gender]
-    
-    # Open our existing CSV file in append mode
-    # Create a file object for this file
-    with open('balanced-all.csv', 'a') as f_object:
-    
-        # Pass this file object to csv.writer()
-        # and get a writer object
+    with open("balanced-all.csv", "a") as f_object:
         writer_object = writer(f_object)
-    
-        # Pass the list as an argument into
-        # the writerow()
         writer_object.writerow(List)
-    
-        # Close the file object
         f_object.close()
-
-else:
-    print('Data not be saved!')
