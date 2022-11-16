@@ -1,67 +1,33 @@
-import wave
-from array import array
-from csv import writer
-from struct import pack
-from sys import byteorder
-
-import librosa
-import numpy
-import numpy as np
-import pyaudio
-import pydub
 from PySide2.QtCore import *
 from PySide2.QtGui import *
 from PySide2.QtWidgets import *
 
-THRESHOLD = 3000
-CHUNK_SIZE = 1024
-FORMAT = pyaudio.paInt16
-RATE = 16000
-SILENCE = 30
+from test import record_to_file, run_analyze, save_sound
+import traceback
 
 
-def extract_feature(file_name, **kwargs):
-    """
-    Extract feature from audio file `file_name`
-        Features supported:
-            - MFCC (mfcc)
-            - Chroma (chroma)
-            - MEL Spectrogram Frequency (mel)
-            - Contrast (contrast)
-            - Tonnetz (tonnetz)
-        e.g:
-        `features = extract_feature(path, mel=True, mfcc=True)`
-    """
-    mfcc = kwargs.get("mfcc")
-    chroma = kwargs.get("chroma")
-    mel = kwargs.get("mel")
-    contrast = kwargs.get("contrast")
-    tonnetz = kwargs.get("tonnetz")
-    X, sample_rate = librosa.core.load(file_name)
-    if chroma or contrast:
-        stft = np.abs(librosa.stft(X))
-    result = np.array([])
-    if mfcc:
-        mfccs = np.mean(librosa.feature.mfcc(y=X, sr=sample_rate, n_mfcc=40).T, axis=0)
-        result = np.hstack((result, mfccs))
-    if chroma:
-        chroma = np.mean(librosa.feature.chroma_stft(S=stft, sr=sample_rate).T, axis=0)
-        result = np.hstack((result, chroma))
-    if mel:
-        mel = np.mean(librosa.feature.melspectrogram(X, sr=sample_rate).T, axis=0)
-        result = np.hstack((result, mel))
-    if contrast:
-        contrast = np.mean(
-            librosa.feature.spectral_contrast(S=stft, sr=sample_rate).T, axis=0
-        )
-        result = np.hstack((result, contrast))
-    if tonnetz:
-        tonnetz = np.mean(
-            librosa.feature.tonnetz(y=librosa.effects.harmonic(X), sr=sample_rate).T,
-            axis=0,
-        )
-        result = np.hstack((result, tonnetz))
-    return result
+class BuilderSignals(QObject):
+    started = Signal()
+    finished = Signal()
+    result = Signal()
+
+
+class Builder(QRunnable):
+    def __init__(self, parent=None):
+        super(Builder, self).__init__()
+        self.signals = BuilderSignals()
+
+    def run(self):
+        self.signals.started.emit()
+
+        try:
+            self.signals.result.emit()
+        except:
+            traceback.print_exc()
+        else:
+            self.signals.finished.emit()
+        finally:
+            pass
 
 
 class Ui_Form(object):
@@ -71,6 +37,8 @@ class Ui_Form(object):
         Form.resize(982, 619)
         self.gridLayout_3 = QGridLayout(Form)
         self.gridLayout_3.setObjectName("gridLayout_3")
+
+        self.threadpool = QThreadPool()
 
         self.groupBox = QGroupBox(Form)
         self.groupBox.setObjectName("groupBox")
@@ -306,171 +274,8 @@ class Ui_Form(object):
 
         QMetaObject.connectSlotsByName(Form)
 
-    def is_silent(self, snd_data):
-        "Returns 'True' if below the 'silent' threshold"
-        return max(snd_data) < THRESHOLD
-
-    def normalize(self, snd_data):
-        "Average the volume out"
-        MAXIMUM = 16384
-        times = float(MAXIMUM) / max(abs(i) for i in snd_data)
-
-        r = array("h")
-        for i in snd_data:
-            r.append(int(i * times))
-        return r
-
-    def trim(self, snd_data):
-        "Trim the blank spots at the start and end"
-
-        def _trim(snd_data):
-            snd_started = False
-            r = array("h")
-
-            for i in snd_data:
-                if not snd_started and abs(i) > THRESHOLD:
-                    snd_started = True
-                    r.append(i)
-
-                elif snd_started:
-                    r.append(i)
-            return r
-
-        # Trim to the left
-        snd_data = _trim(snd_data)
-
-        # Trim to the right
-        snd_data.reverse()
-        snd_data = _trim(snd_data)
-        snd_data.reverse()
-        return snd_data
-
-    def add_silence(self, snd_data, seconds):
-        "Add silence to the start and end of 'snd_data' of length 'seconds' (float)"
-        r = array("h", [0 for i in range(int(seconds * RATE))])
-        r.extend(snd_data)
-        r.extend([0 for i in range(int(seconds * RATE))])
-        return r
-
-    def record(self):
-        """
-        Record a word or words from the microphone and
-        return the data as an array of signed shorts.
-        Normalizes the audio, trims silence from the
-        start and end, and pads with 0.5 seconds of
-        blank sound to make sure VLC et al can play
-        it without getting chopped off.
-        """
-        self.startRecordBtn.setEnabled(False)
-        self.startRecordBtn.setText("Recording...")
-        p = pyaudio.PyAudio()
-        stream = p.open(
-            format=FORMAT,
-            channels=1,
-            rate=RATE,
-            input=True,
-            output=True,
-            frames_per_buffer=CHUNK_SIZE,
-        )
-
-        num_silent = 0
-        snd_started = False
-
-        r = array("h")
-
-        while 1:
-            # little endian, signed short
-            snd_data = array("h", stream.read(CHUNK_SIZE))
-            if byteorder == "big":
-                snd_data.byteswap()
-            r.extend(snd_data)
-
-            silent = self.is_silent(snd_data)
-
-            if silent and snd_started:
-                num_silent += 1
-            elif not silent and not snd_started:
-                snd_started = True
-
-            if snd_started and num_silent > SILENCE:
-                break
-
-        sample_width = p.get_sample_size(FORMAT)
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-
-        r = self.normalize(r)
-        r = self.trim(r)
-        r = self.add_silence(r, 0.5)
-        return sample_width, r
-
     def add_to_log(self, text):
         self.logListView.addItem(text)
-
-    def record_to_file(self):
-        "Records from the microphone and outputs the resulting data to 'path'"
-        sample_width, data = self.record()
-        data = pack("<" + ("h" * len(data)), *data)
-
-        wf = wave.open("test.wav", "wb")
-        wf.setnchannels(1)
-        wf.setsampwidth(sample_width)
-        wf.setframerate(RATE)
-        wf.writeframes(data)
-        wf.close()
-        self.add_to_log("[SUCCESS] Successfully recorded sound.")
-        self.startRecordBtn.setEnabled(True)
-        self.startRecordBtn.setText("Start")
-        self.runBtn.setEnabled(True)
-
-    def run(self):
-        from utils import create_model, load_data, split_data
-
-        model = create_model()
-        model.load_weights("results/model.h5")
-        features = extract_feature("test.wav", mel=True).reshape(1, -1)
-        male_pred = model.predict(features)[0][0]
-        female_pred = 1 - male_pred
-        self.gender = "male" if male_pred > female_pred else "female"
-        self.add_to_log("[RESULT] Probabilities:")
-        self.add_to_log(
-            "[RESULT] Male: "
-            + str(male_pred * 100)
-            + "; Female: "
-            + str(female_pred * 100)
-        )
-        self.manLabel.setText(str(male_pred * 100))
-        self.womanLabel.setText(str(female_pred * 100))
-        self.runBtn.setEnabled(False)
-        self.saveBtn.setEnabled(True)
-        self.saveFileName.setEnabled(True)
-        self.saveFileName.clear()
-        self.saveFileName.insert("enter-your-file-name")
-
-    def save_file(self):
-        a = pydub.AudioSegment.from_mp3("test.wav")
-        arr = np.array(a.get_array_of_samples())
-        numpy.save(
-            "data/cv-valid-train/" + self.saveFileName.text() + ".npy",
-            arr,
-            allow_pickle=True,
-            fix_imports=True,
-        )
-
-        List = [
-            ("data/cv-valid-selftrain/" + self.saveFileName.text() + ".npy"),
-            self.gender,
-        ]
-
-        with open("balanced-all.csv", "a") as f_object:
-            writer_object = writer(f_object)
-            writer_object.writerow(List)
-            f_object.close()
-        self.add_to_log("[SUCCESS] Successfully saved file.")
-        self.saveBtn.setEnabled(False)
-        self.saveFileName.setEnabled(False)
-        self.saveFileName.clear()
 
     def retranslateUi(self, Form):
         Form.setWindowTitle(QCoreApplication.translate("Form", "Form", None))
@@ -544,9 +349,95 @@ class Ui_Form(object):
         self.bindEvents()
 
     def bindEvents(self):
-        self.startRecordBtn.clicked.connect(self.record_to_file)
-        self.runBtn.clicked.connect(self.run)
-        self.saveBtn.clicked.connect(self.save_file)
+        self.startRecordBtn.clicked.connect(self.start_button_clicked)
+        self.runBtn.clicked.connect(self.run_clicked)
+        self.saveBtn.clicked.connect(self.save_clicked)
+
+    # startRecordBtn event handling
+    def start_button_preclick(self):
+        self.add_to_log("[EVENT] Start recording.")
+        self.startRecordBtn.setEnabled(False)
+        self.startRecordBtn.setText("Recording...")
+
+    def start_button_event(self):
+        record_to_file("test.wav")
+
+    def start_button_postclick(self):
+        self.add_to_log("[SUCCESS] Successfully recorded sound.")
+        self.startRecordBtn.setEnabled(True)
+        self.startRecordBtn.setText("Start")
+        self.runBtn.setEnabled(True)
+
+    def start_button_clicked(self):
+        builder = Builder()
+
+        builder.signals.started.connect(self.start_button_preclick)
+        builder.signals.result.connect(self.start_button_event)
+        builder.signals.finished.connect(self.start_button_postclick)
+
+        self.threadpool.start(builder)
+
+    # runBtn event handling
+    def run_preclick(self):
+        self.add_to_log("[EVENT] Analyzing sound.")
+        self.runBtn.setEnabled(False)
+        self.runBtn.setText("Analyzing...")
+
+    def run_event(self):
+        male_pred, female_pred, gender = run_analyze("test.wav")
+        self.gender = gender
+        self.male_pred = male_pred
+        self.female_pred = female_pred
+
+    def run_postclick(self):
+        self.add_to_log("[SUCCESS] Successfully analyzed sound.")
+        self.runBtn.setEnabled(True)
+        self.runBtn.setText("Analyse")
+        self.add_to_log("[RESULT] Probabilities:")
+        self.add_to_log(
+            "[RESULT] Male: "
+            + str(self.male_pred * 100)
+            + "; Female: "
+            + str(self.female_pred * 100)
+        )
+        self.manLabel.setText(str(self.male_pred * 100))
+        self.womanLabel.setText(str(self.female_pred * 100))
+        self.runBtn.setEnabled(False)
+        self.saveBtn.setEnabled(True)
+        self.saveFileName.setEnabled(True)
+        self.saveFileName.clear()
+        self.saveFileName.insert("enter-your-file-name")
+
+    def run_clicked(self):
+        builder = Builder()
+
+        builder.signals.started.connect(self.run_preclick)
+        builder.signals.result.connect(self.run_event)
+        builder.signals.finished.connect(self.run_postclick)
+
+        self.threadpool.start(builder)
+
+    # saveBtn event handling
+    def save_preclick(self):
+        self.add_to_log("[EVENT] Saving result.")
+
+    def save_event(self):
+        save_sound("test.wav", self.saveFileName.text(), self.gender)
+
+    def save_postclick(self):
+        self.add_to_log("[SUCCESS] Successfully saved file.")
+        self.saveBtn.setEnabled(False)
+        self.saveFileName.setEnabled(False)
+        self.saveFileName.clear()
+
+    def save_clicked(self):
+        builder = Builder()
+
+        builder.signals.started.connect(self.save_preclick)
+        builder.signals.result.connect(self.save_event)
+        builder.signals.finished.connect(self.save_postclick)
+
+        self.threadpool.start(builder)
 
 
 if __name__ == "__main__":
