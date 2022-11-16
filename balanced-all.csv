@@ -66937,7 +66937,10 @@ data/cv-other-train/sample-022864.npy,male
 data/cv-valid-train/sample-080933.npy,male
 data/cv-other-train/sample-012026.npy,male
 data/cv-other-train/sample-013841.npy,male
-data/cv-valid-selftrain/bayu.npy,male
-data/cv-valid-selftrain/komet.npy,male
+data/cv-valid-train/bayu.npy,male
+data/cv-valid-train/komet.npy,male
+data/cv-valid-train/olin.npy,female
+data/cv-valid-train/ivando.npy,male
+data/cv-valid-train/simpan.npy,male
+data/cv-valid-train/testing.npy,male
 
-data/cv-valid-selftrain/olin.npy,female
