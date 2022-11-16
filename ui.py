@@ -389,8 +389,6 @@ class Ui_Form(object):
 
     def run_postclick(self):
         self.add_to_log("[SUCCESS] Successfully analyzed sound.")
-        self.runBtn.setEnabled(True)
-        self.runBtn.setText("Analyse")
         self.add_to_log("[RESULT] Probabilities:")
         self.add_to_log(
             "[RESULT] Male: "
@@ -400,7 +398,6 @@ class Ui_Form(object):
         )
         self.manLabel.setText(str(self.male_pred * 100))
         self.womanLabel.setText(str(self.female_pred * 100))
-        self.runBtn.setEnabled(False)
         self.saveBtn.setEnabled(True)
         self.saveFileName.setEnabled(True)
         self.saveFileName.clear()
